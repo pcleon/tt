@@ -1,3 +1,4 @@
+import argparse
 import etcd3
 import json
 import subprocess
@@ -58,9 +59,24 @@ def downgrade(ha_cluster):
         print(slave)
 
 
-key = "/db/ha"  # 替换为你需要查询的键
-for cluster, _ in ips.get_prefix(key):
-    try:
-        downgrade(cluster)
-    except Exception as e:
-        print(f"Error decoding JSON for key {cluster}: {e}")
+def main():
+    # 设置命令行参数解析
+    parser = argparse.ArgumentParser(description="HA Cluster Downgrade Script")
+    parser.add_argument(
+        "arbit_server",
+        type=str,
+        help="必传参数，用于指定查询的 arbit_server 键",
+    )
+    args = parser.parse_args()
+
+    # 使用传入的 arbit_server 参数
+    key = f"/db/ha/{args.arbit_server}"
+    for cluster, _ in ips.get_prefix(key):
+        try:
+            downgrade(cluster)
+        except Exception as e:
+            print(f"Error decoding JSON for key {cluster}: {e}")
+
+
+if __name__ == "__main__":
+    main()
