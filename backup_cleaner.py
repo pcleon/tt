@@ -9,8 +9,8 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 # 配置部分
-BACKUP_DIR = "/tmp/backup_test"
-LOG_FILE = "/tmp/backup_cleaner.log"
+BACKUP_DIRS = ["/tmp/backup_test", "/tmp/backup_test2"]  # 可添加多个目录，如 ["/tmp/backup_test", "/tmp/backup_test2"]
+LOG_FILE = "/tmp/cleaner.log"
 
 def is_file_in_use(filepath):
     """检查文件是否被占用"""
@@ -78,49 +78,66 @@ def main():
     logging.info("="*50)
     logging.info("开始执行备份清理任务")
     
-    # 获取所有备份文件
-    try:
-        files = [f for f in os.listdir(BACKUP_DIR) 
-                 if f.endswith(".tar.gz") and "_full_" in f]
-    except Exception as e:
-        logging.error(f"读取备份目录失败: {str(e)}")
-        return
-    
-    # 文件计数器
-    processed = 0
-    kept = 0
-    deleted = 0
-    
-    for filename in files:
-        processed += 1
-        file_path = os.path.join(BACKUP_DIR, filename)
-        
-        # 解析文件日期（匹配12位日期：YYYYMMDDHHMM）
-        match = re.search(r"_full_(\d{12})\.\w+\.tar\.gz$", filename)
-        if not match:
-            logging.warning(f"无效文件名格式: {filename}")
-            continue
-            
+    total_processed = 0
+    total_kept = 0
+    total_deleted = 0
+    for BACKUP_DIR in BACKUP_DIRS:
+        logging.info(f"处理目录: {BACKUP_DIR}")
         try:
-            # 解析包含时分的日期，并归一化到日期（清除时间部分）
-            file_date = datetime.strptime(match.group(1), "%Y%m%d%H%M")
-            file_date = file_date.replace(hour=0, minute=0, second=0)
-        except ValueError:
-            logging.warning(f"无效日期格式: {filename}")
+            # 支持以 .gz 结尾的多种格式（如 .tar.gz 或 .tar.<hash>.gz）
+            files = [f for f in os.listdir(BACKUP_DIR)
+                     if f.endswith(".gz") and "_full_" in f]
+        except Exception as e:
+            logging.error(f"读取备份目录失败: {str(e)}")
             continue
-            
-        # 判断是否保留
-        if should_keep_file(file_date):
-            kept += 1
-            continue
-            
-        # 执行删除
-        if safe_remove(file_path):
-            deleted += 1
-            time.sleep(2)
-    
-    # 生成报告
-    logging.info(f"处理完成: 总数={processed}, 保留={kept}, 删除={deleted}")
+
+        processed = 0
+        kept = 0
+        deleted = 0
+
+        for filename in files:
+            processed += 1
+            file_path = os.path.join(BACKUP_DIR, filename)
+
+            # 按优先级尝试多种模式，确保日期为第1个捕获组
+            patterns = [
+                r"_full_(\d{12})\.[^.]+\.tar\.gz$",  # ..._YYYYMMDDHHMM.<hash>.tar.gz
+                r"_full_(\d{12})\.tar\.[^.]+\.gz$",  # ..._YYYYMMDDHHMM.tar.<hash>.gz
+                r"_full_(\d{12})\.tar\.gz$",         # ..._YYYYMMDDHHMM.tar.gz
+                r"_full_(\d{12})\.gz$",               # ..._YYYYMMDDHHMM.gz
+            ]
+            m = None
+            for p in patterns:
+                m = re.search(p, filename)
+                if m:
+                    break
+
+            if not m:
+                logging.warning(f"无效文件名格式: {filename}")
+                continue
+
+            try:
+                date_str = m.group(1)
+                file_date = datetime.strptime(date_str, "%Y%m%d%H%M")
+                file_date = file_date.replace(hour=0, minute=0, second=0)
+            except ValueError:
+                logging.warning(f"无效日期格式: {filename}")
+                continue
+
+            if should_keep_file(file_date):
+                kept += 1
+                continue
+
+            if safe_remove(file_path):
+                deleted += 1
+                time.sleep(2)
+
+        logging.info(f"目录处理完成: 总数={processed}, 保留={kept}, 删除={deleted}")
+        total_processed += processed
+        total_kept += kept
+        total_deleted += deleted
+
+    logging.info(f"全部处理完成: 总数={total_processed}, 保留={total_kept}, 删除={total_deleted}")
     logging.info("="*50)
 
 if __name__ == "__main__":
