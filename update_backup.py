@@ -6,7 +6,7 @@ import re
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
 import argparse
-import mysql.connector
+import pymysql
 import etcd3
 import json
 import sys
@@ -47,8 +47,8 @@ def match_mdbp(cluster_name: str) -> bool:
 def get_vip_from_ip(ip: str) -> str:
     """获取vip"""
     try:
-        conn = mysql.connector.connect(**MYSQL_CONFIG)
-        cursor = conn.cursor(dictionary=True)
+        conn = pymysql.connect(**MYSQL_CONFIG)
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
 
         query = """
 SELECT 
@@ -83,8 +83,8 @@ WHERE
 def get_cluster_ips(ip: str) -> Set[str]:
     """获取集群中所有ip"""
     try:
-        conn = mysql.connector.connect(**MYSQL_CONFIG)
-        cursor = conn.cursor(dictionary=True)
+        conn = pymysql.connect(**MYSQL_CONFIG)
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
 
         query = """
 SELECT 
@@ -99,14 +99,19 @@ WHERE
         cursor.execute(query, (ip,))
         results = cursor.fetchall()
 
-        cluster_ips = set()
+        ips = set()
         for row in results:
-            cluster_ips.add(row["ip"])
+            ips.add(row["ip"])
+            print(
+                f"MySQL IP: {row['ip']}, Role: {row['instance_role']}, Read Only: {row['instance_read_only']}"
+            )
+
         cursor.close()
         conn.close()
-        return cluster_ips
-    except Exception as err:
-        print(f"获取集群ip列表出错: {err}")
+
+        return ips
+    except pymysql.Error as err:
+        print(f"MySQL Error: {err}")
         sys.exit(1)
 
 
@@ -154,6 +159,14 @@ def gen_template(db_ips, ha_ips):
     template = jinja2.Template(template_str)
     rendered = template.render(db_ips=db_ips, ip_new=ip_new)
     print(rendered)
+    #将rendenered 写入到文件/tmp/xx中,如果文件不存在则创建,存在则覆盖
+    file_path='/tmp/xx'
+    try:
+        os.remove(file_path)
+    except FileNotFoundError:
+        pass  # 文件不存在时忽略错误
+    with open(file_path, "w") as f:
+        f.write(rendered)
 
 
 def main():
@@ -183,9 +196,7 @@ def main():
 
     if len(diff_ips) != 1:
         print("集群和etcd的IP差集不为1")
-    gen_template(cluster_ips, dif)
-
-if __name__ == "__main__":
+    gen_template(cluster_ips, diff_ips)
     # main()
     # get_vip_from_ip("192.168.0.1")
     cluster_ips = get_cluster_ips("192.168.0.1")
