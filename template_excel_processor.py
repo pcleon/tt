@@ -1,9 +1,10 @@
 import pandas as pd
 import requests
 import json
+import argparse
 import numpy as np
 
-def process_excel_and_send_data():
+def process_excel_and_send_data(file_path='t2.xlsx', sheet_name='Sheet1', rd_user='rd_user', dba_user='dba_user'):
     # 定义需要的列
     required_columns = ['instance', 'db_name', 'table_name', 'clear_condition', 'cron_info']
     
@@ -23,8 +24,8 @@ def process_excel_and_send_data():
         "target_table_name": "",       # 固定值
         "is_regexp_task": False,       # 固定值
         "expire_days": 0,              # 固定值
-        "rd": "rd_user",               # 固定值
-        "dba": "dba_user"              # 固定值
+        "rd": rd_user,               # 可配置
+        "dba": dba_user              # 可配置
     }
     
     try:
@@ -112,7 +113,14 @@ def process_excel_and_send_data():
         return False
 
 if __name__ == "__main__":
-    success = process_excel_and_send_data()
+    parser = argparse.ArgumentParser(description='Process Excel and POST tasks')
+    parser.add_argument('file', nargs='?', default='t2.xlsx', help='Excel 文件路径，默认 t2.xlsx')
+    parser.add_argument('-s', '--sheet', default='Sheet1', help='Sheet 名称，默认 Sheet1')
+    parser.add_argument('--rd', default='rd_user', help='rd 用户，默认 rd_user')
+    parser.add_argument('--dba', default='dba_user', help='dba 用户，默认 dba_user')
+    args = parser.parse_args()
+
+    success = process_excel_and_send_data(file_path=args.file, sheet_name=args.sheet, rd_user=args.rd, dba_user=args.dba)
     if success:
         print("\nAll rows processed successfully!")
     else:
