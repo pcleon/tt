@@ -135,9 +135,6 @@ class ServerRemoteExecute(object):
         return self._client
 
     def _get_server(self):
-        # sql = "select oat_server.id, oat_credential.id as credential_id,  ip, ssh_port, username, password, " \
-        #       "auth_type, key_data, passphrase from oat_server, oat_credential " \
-        #       "where oat_server.credential_id=oat_credential.id and oat_server.id=%s"
         sql = "SELECT a.id, a.idc, a.cluster_name, a.cluster_vip_port, b.instance_name, b.ip, " \
               "b.instance_role, instance_read_only FROM mysql_cluster_instance b " \
               "JOIN mysql_cluster a ON a.cluster_name = b.cluster_name " \
@@ -157,7 +154,10 @@ class ServerRemoteExecute(object):
         }
 
     def get_server_idc(self):
-        sql = "select name, region from oat_server, oat_idc where oat_server.id=%s and oat_server.idc_id=oat_idc.id"
+        sql = "SELECT a.id, a.idc idc, a.cluster_name,  b.instance_name, b.ip, " \
+              "b.instance_role, instance_read_only FROM mysql_cluster_instance b " \
+              "JOIN mysql_cluster a ON a.cluster_name = b.cluster_name " \
+              "WHERE b.instance_name = %s "
         idc = self.hook.get_first(sql=sql, parameters=[self.server_instance])
         assert idc is not None, f'server {self.server_instance} not found or idc is empty'
         return idc
