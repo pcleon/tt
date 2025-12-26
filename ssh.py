@@ -24,7 +24,6 @@ from paramiko.util import u as to_str
 from paramiko.util import b as to_bytes
 from dotenv import load_dotenv
 
-
 # 加载环境变量
 load_dotenv()
 
@@ -438,11 +437,25 @@ class ServerRemoteExecute(object):
         if ret_code != 0:
             raise RuntimeError('scp failed: %s' % output)
 
-    def execute(self, cmd, sudo=False, control_master=True, env=None, logger=None, timeout: int=None) -> (int, str):
+    def execute(self, cmd, sudo=False, control_master=True, env=None, logger=None, timeout: int=None, log_to_stdout=False, log_to_file=False, log_file='/tmp/x.log') -> (int, str):
         """由于 _bare_run 实现机制的原因，timeout 最大可能会有 select_timeout (4s) 的偏差，影响不大 """
+        use_logger = logger
+        if log_to_stdout or log_to_file:
+            use_logger = logging.getLogger('ssh_execute')
+            use_logger.setLevel(logging.INFO)
+            use_logger.propagate = False  # 防止传播到父 logger
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            if log_to_stdout:
+                console_handler = logging.StreamHandler()
+                console_handler.setFormatter(formatter)
+                use_logger.addHandler(console_handler)
+            if log_to_file:
+                file_handler = logging.FileHandler(log_file)
+                file_handler.setFormatter(formatter)
+                use_logger.addHandler(file_handler)
         return self.run_ssh(
             cmd, self.server['ip'], self.server['ssh_port'], self.server['username'], 
-            sudo=sudo, control_master=control_master, env=env, logger=logger, timeout=timeout
+            sudo=sudo, control_master=control_master, env=env, logger=use_logger, timeout=timeout
         )
 
     def scp_(self, local_path: Union[str, Path], remote_path: Union[str, PurePath] = None, logger=None) -> PurePath:
@@ -480,7 +493,7 @@ class ServerRemoteExecute(object):
 
 if __name__ == '__main__':
     with ServerRemoteExecute('pc_box') as remote:
-        code, output = remote.execute('df -h; whoami ',sudo=True, logger=logging.getLogger())
-        # code, output = remote.execute_script(Path('/tmp/test.sh'), args=('/', '/home'), logger=logging.getLogger())
+        # code, output = remote.execute('df -h; whoami ', sudo=True, log_to_file=True)
+        code, output = remote.execute('df -h; whoami ',sudo=False, log_to_file=True, log_file='/tmp/ssh_test.log')
         print(code)
         print(output)
