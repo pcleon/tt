@@ -70,7 +70,6 @@ myhook = myHook()
 
 
 def get_remote_working_dir(hook=myhook):
-    # return hook.get_first("select value from oat_configproperty where `key`='dba.remote_working_dir'")['value']
     return '/tmp'
 
 def get_random_string(length=8, choices=string.ascii_letters + string.digits):
@@ -190,7 +189,7 @@ class ServerRemoteExecute(object):
         """deprecated"""
         transport = client.get_transport()
         if sudo and transport.get_username() != 'root':
-            cmd = 'sudo -s <<"OAT_REMOTE_EXECUTE_EOF"\n%s\nOAT_REMOTE_EXECUTE_EOF' % cmd
+            cmd = 'sudo -s <<"DBA_REMOTE_EXECUTE_EOF"\n%s\nDBA_REMOTE_EXECUTE_EOF' % cmd
 
         if logger:
             transport._channel_handler_table = {
@@ -220,9 +219,9 @@ class ServerRemoteExecute(object):
 
     def remote_write(self, content, remote_file_name: str, logger=None):
         cat_cmd = textwrap.dedent('''\
-        cat > %(file_name)s << __OAT_REMOTE_WRITE__
+        cat > %(file_name)s << __DBA_REMOTE_WRITE__
         %(file_content)s
-        __OAT_REMOTE_WRITE__
+        __DBA_REMOTE_WRITE__
         ''') % {
             'file_name': remote_file_name,
             'file_content': content
