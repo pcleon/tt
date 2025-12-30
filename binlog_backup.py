@@ -3,16 +3,65 @@ import subprocess
 import time
 import logging
 from datetime import datetime
+import configparser
 
 # --- 配置参数 ---
-BINLOG_DIR = "/data/3306/mysql/data"
-INDEX_FILE = "mysql-bin.index"
+MY_CNF = "/data/3306/mysql/my.cnf"
+BINLOG_DIR = None
+INDEX_FILE = None
 BACKUP_DEST = "/data/3306/mybackup/gfs/binlog_backup/{hostname}"
 CHECK_INTERVAL = 30
 COMPRESS_LEVEL = 9  # 1-9, 9是最高压缩率
 
 # 日志配置
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+def load_mysql_config():
+    """从MySQL配置文件中读取BINLOG_DIR和INDEX_FILE"""
+    global BINLOG_DIR, INDEX_FILE
+    if not os.path.exists(MY_CNF):
+        logging.error(f"MySQL配置文件不存在: {MY_CNF}")
+        return False
+
+    config = configparser.ConfigParser()
+    try:
+        config.read(MY_CNF)
+        if 'mysqld' not in config:
+            logging.error("配置文件中没有[mysqld]部分")
+            return False
+
+        mysqld = config['mysqld']
+        log_bin = mysqld.get('log_bin')
+        log_bin_index = mysqld.get('log_bin_index')
+
+        if not log_bin:
+            logging.error("配置文件中没有log_bin设置")
+            return False
+
+        # 解析log_bin路径
+        if '/' in log_bin:
+            BINLOG_DIR = os.path.dirname(log_bin)
+            binlog_prefix = os.path.basename(log_bin)
+        else:
+            # 如果没有路径，使用datadir
+            datadir = mysqld.get('datadir')
+            if not datadir:
+                logging.error("配置文件中没有datadir设置，且log_bin没有指定路径")
+                return False
+            BINLOG_DIR = datadir
+            binlog_prefix = log_bin
+
+        # 解析索引文件
+        if log_bin_index:
+            INDEX_FILE = os.path.basename(log_bin_index)
+        else:
+            INDEX_FILE = f"{binlog_prefix}.index"
+
+        return True
+    except Exception as e:
+        logging.error(f"解析配置文件失败: {e}")
+        return False
 
 
 def get_human_mtime(file_path):
@@ -75,6 +124,9 @@ def main():
         logging.error(f"错误: NFS 挂载目录 {BACKUP_DEST} 不存在")
         return
 
+    if not load_mysql_config():
+        return
+
     logging.info("MySQL Binlog 准实时备份脚本启动")
     while True:
         try:
@@ -83,7 +135,6 @@ def main():
         except Exception as e:
             logging.error(f"主程序异常: {e}")
         time.sleep(CHECK_INTERVAL)
-
 
 if __name__ == "__main__":
     main()
