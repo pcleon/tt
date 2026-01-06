@@ -18,7 +18,7 @@ def process_excel_and_send_data(file_path='t2.xlsx', sheet_name='Sheet1', rd_use
         "condition": "{clear_condition}", # 需要替换
         "cron_tab": "{cron_info}",     # 需要替换
         "priority": 0,                 # 固定值
-        "enabled": 0,                  # 固定值
+        "enabled": 1,                  # 固定值
         "target_cluster_name": "archivedb_1", # 固定值
         "target_db_name": "",          # 固定值
         "target_table_name": "",       # 固定值

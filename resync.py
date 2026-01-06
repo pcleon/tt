@@ -6,10 +6,22 @@ import logging
 import socket
 import calendar
 
+from lark import logger
+
 # 使用当前时间
 local_path = "/data/3306/mybackup/my3306/clone"
 gfs_path = "/data/3306/mybackup/gfs/clone"
 
+
+def setup_logger(name, log_file, level=logging.INFO):
+    """通用的日志设置函数"""
+    handler = logging.FileHandler(log_file)        
+    handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+    return logger
 
 def fillup_miss_file():
     now = datetime.now()
@@ -18,11 +30,7 @@ def fillup_miss_file():
         return
     hostname = socket.gethostname()
     # 设置日志
-    logging.basicConfig(
-        filename=os.path.join(local_path, "fillup.log"),
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
+    logger1 = setup_logger('fillup', '/tmp/f1.log')
 
     # 计算上个月
     last_month_date = now.replace(day=1) - timedelta(days=1)
@@ -94,7 +102,7 @@ def fillup_miss_file():
                                 os.path.dirname(file_path), new_filename
                             )
                             os.rename(file_path, new_path)
-                            logging.info(
+                            logger1.info(
                                 f"Renamed {os.path.basename(file_path)} to {new_filename}"
                             )
                             print(
@@ -130,12 +138,7 @@ def resync_file(local_path, gfs_path):
     print("匹配的文件:", matched_files)
 
     # 设置日志
-    logging.basicConfig(
-        filename="/tmp/copy.log",
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
-
+    logger2 = setup_logger('resync', '/tmp/f2.log')
     # 对于匹配的文件，如果gfs_path中没有，则rsync拷贝
     for filename in matched_files:
         local_file = os.path.join(local_path, filename)
@@ -148,10 +151,10 @@ def resync_file(local_path, gfs_path):
                 universal_newlines=True,
             )
             if result.returncode == 0:
-                logging.info(f"Successfully copied {filename} to {gfs_path}")
+                logger2.info(f"Successfully copied {filename} to {gfs_path}")
                 print(f"已拷贝: {filename}")
             else:
-                logging.error(f"Failed to copy {filename}: {result.stderr}")
+                logger2.error(f"Failed to copy {filename}: {result.stderr}")
                 print(f"拷贝失败: {filename} - {result.stderr}")
 
 

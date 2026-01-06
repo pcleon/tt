@@ -4,12 +4,15 @@ import time
 import logging
 from datetime import datetime
 import configparser
+import socket
 
 # --- 配置参数 ---
-MY_CNF = "/data/3306/mysql/my.cnf"
+MY_CNF = "/data/3306/mysql8/etc/my.cnf"
+# MY_CNF = "/data/3306/mysql/my.cnf"
 BINLOG_DIR = None
 INDEX_FILE = None
-BACKUP_DEST = "/data/3306/mybackup/gfs/binlog_backup/{hostname}"
+# BACKUP_DEST = "/data/3306/mybackup/gfs/binlog_backup/{}".format(socket.gethostname())
+BACKUP_DEST = "/data/3306/mybackup"
 CHECK_INTERVAL = 30
 COMPRESS_LEVEL = 9  # 1-9, 9是最高压缩率
 
@@ -24,7 +27,8 @@ def load_mysql_config():
         logging.error(f"MySQL配置文件不存在: {MY_CNF}")
         return False
 
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser(strict=False)
+    # config = configparser.ConfigParser(strict=False, allow_no_value=True)  # 忽略重复section，覆盖重复option，允许没有值的选项
     try:
         config.read(MY_CNF)
         if 'mysqld' not in config:
