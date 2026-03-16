@@ -53,10 +53,11 @@ def get_read_only_status(conn):
         row = cur.fetchone()
     return {
         "read_only": bool(row["read_only"]),
+        "super_read_only": bool(row["super_read_only"]),
     }
 
 
-def set_read_only(conn, read_only=True)
+def set_read_only(conn, read_only=True):
     run_sql(conn, "SET GLOBAL read_only = %s" % (1 if read_only else 0))
 
 
@@ -96,13 +97,14 @@ def restore_replication(slave_conn, slave_host, topo, repl_user, repl_password):
     master_port = topo["master_port"]
     print(f"[{slave_host}] 恢复复制到主节点 {master_host}:{master_port}")
     run_sql(slave_conn, "STOP SLAVE;")
-    run_sql(slave_conn, "RESET SLAVE ALL;")
-    sql = (
-        "CHANGE MASTER TO MASTER_HOST=%s, MASTER_PORT=%s, MASTER_USER=%s, MASTER_PASSWORD=%s, "
-        "MASTER_AUTO_POSITION=1, GET_MASTER_PUBLIC_KEY=1;"
-    )
-    with slave_conn.cursor() as cur:
-        cur.execute(sql, (master_host, master_port, repl_user, repl_password))
+    run_sql(slave_conn, "RESET SLAVE;")
+    # run_sql(slave_conn, "RESET SLAVE ALL;")
+    # sql = (
+    #     "CHANGE MASTER TO MASTER_HOST=%s, MASTER_PORT=%s, MASTER_USER=%s, MASTER_PASSWORD=%s, "
+    #     "MASTER_AUTO_POSITION=1, GET_MASTER_PUBLIC_KEY=1;"
+    # )
+    # with slave_conn.cursor() as cur:
+    #     cur.execute(sql, (master_host, master_port, repl_user, repl_password))
     run_sql(slave_conn, "START SLAVE;")
     with slave_conn.cursor() as cur:
         cur.execute("SHOW SLAVE STATUS")
@@ -162,18 +164,18 @@ def main():
         original_ro = {}
         for host, conn in conns.items():
             original_ro[host] = get_read_only_status(conn)
-            if not original_ro[host]["read_only"] or not original_ro[host]["super_read_only"]:
-                print(f"[{host}] 设置 read_only=ON, super_read_only=ON")
-                set_read_only(conn, True, True)
+            if not original_ro[host]["read_only"]:
+                print(f"[{host}] 设置 read_only=ON")
+                set_read_only(conn, True)
             else:
-                print(f"[{host}] 已是只读模式")
+                print(f"[{host}] 已是read_only模式")
 
         if args.dry_run:
             print("dry-run 模式，仅检查一致性通过，不执行重置。")
             # dry-run 时恢复原只读设置
             for host, conn in conns.items():
                 ro = original_ro[host]
-                set_read_only(conn, ro["read_only"], ro["super_read_only"])
+                set_read_only(conn, ro["read_only"])
             print("已恢复原只读设置")
             return
 
@@ -193,8 +195,13 @@ def main():
         for host, conn in conns.items():
             ro = original_ro.get(host)
             if ro:
-                set_read_only(conn, ro["read_only"], ro["super_read_only"])
+                set_read_only(conn, ro["read_only"])
                 print(f"[{host}] 恢复 read_only={ro['read_only']}, super_read_only={ro['super_read_only']}")
+
+        # 最后确保主库可写（默认为首个 host）
+        master_host = hosts[0]
+        print(f"[{master_host}] 最后确保主库可写，设置 read_only=OFF")
+        set_read_only(conns[master_host], False)
 
     finally:
         for c in conns.values():
