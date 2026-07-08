@@ -2,7 +2,7 @@
 
 从 ssh.py 的 run_ssh 链路提取，去掉了 paramiko / pymysql 等依赖，仅依赖标准库，
 兼容 Python 3.7+。底层仍是调用本地 ssh 客户端，凭据走本地当前用户的默认方式
-（或通过 password / key_data 指定）。
+（免密登录，依赖 ~/.ssh 或 agent）。
 """
 
 import fcntl
@@ -11,7 +11,6 @@ import os
 import selectors
 import shlex
 import subprocess
-import tempfile
 import time
 from typing import Optional, Tuple, Union
 
@@ -34,14 +33,11 @@ def _to_str(s: Union[str, bytes], encoding: str = 'utf-8') -> str:
     return s
 
 
-def _build_command(binary, *other_args, port=22, user=CURRENT_USER, password=None,
-                   key_file=None, control_master=True):
+def _build_command(binary, *other_args, port=22, user=CURRENT_USER,
+                   control_master=True):
     """组装本地 ssh/scp 命令行（bytes 列表）。"""
     assert binary in ('ssh', 'scp')
     b_command = []
-
-    if password:
-        b_command += [b'sshpass', b'-P', b'ass', b'-e']
     b_command += (
         _to_bytes(binary),
         b"-o", b'User="%s"' % _to_bytes(user),
@@ -51,13 +47,6 @@ def _build_command(binary, *other_args, port=22, user=CURRENT_USER, password=Non
         b"-o", b"ServerAliveInterval=5",
         b"-o", b"ServerAliveCountMax=3",
     )
-    if key_file:
-        b_command += (
-            b"-o", b"PreferredAuthentications=publickey",
-            b'-i', _to_bytes(key_file),
-        )
-    elif password:
-        b_command += (b"-o", b"PreferredAuthentications=password")
 
     if control_master:
         b_command += (
@@ -148,37 +137,20 @@ def _bare_run(cmd, env=None, logger=None, timeout=None) -> Tuple[int, str]:
         p.stdout.close()
         p.stderr.close()
 
-    if cmd[0] == b'sshpass':
-        if p.returncode in (5, 255) and not b_stdout:
-            raise ConnectionError(_to_str(b_stderr))
-    else:
-        if p.returncode == 255 and not b_stdout:
-            raise ConnectionError(_to_str(b_stderr))
+    if p.returncode == 255 and not b_stdout:
+        raise ConnectionError(_to_str(b_stderr))
     return p.returncode, _to_str(b_output)
 
 
-def _run(binary, args, port=22, user=CURRENT_USER, password=None, key_data=None,
-         control_master=True, logger=None, timeout=None) -> Tuple[int, str]:
-    """根据凭据类型选择不同的构造方式并执行。"""
-    if key_data:
-        with tempfile.NamedTemporaryFile(dir='/dev/shm/') as f:
-            f.write(_to_bytes(key_data))
-            f.flush()
-            cmd = _build_command(binary, *args, port=port, user=user,
-                                 key_file=f.name, control_master=control_master)
-            return _bare_run(cmd, logger=logger, timeout=timeout)
-    elif password:
-        cmd = _build_command(binary, *args, port=port, user=user, password=password,
-                             control_master=control_master)
-        return _bare_run(cmd, env={'SSHPASS': password}, logger=logger, timeout=timeout)
-    else:
-        cmd = _build_command(binary, *args, port=port, user=user,
-                             control_master=control_master)
-        return _bare_run(cmd, logger=logger, timeout=timeout)
+def _run(binary, args, port=22, user=CURRENT_USER, control_master=True,
+         logger=None, timeout=None) -> Tuple[int, str]:
+    """构造 ssh/scp 命令并执行。"""
+    cmd = _build_command(binary, *args, port=port, user=user,
+                         control_master=control_master)
+    return _bare_run(cmd, logger=logger, timeout=timeout)
 
 
 def run_remote(cmd: str, host: str, port: int = 22, user: str = CURRENT_USER,
-               password: Optional[str] = None, key_data: Optional[str] = None,
                sudo: bool = False, control_master: bool = True,
                env: Optional[dict] = None, logger=None,
                timeout: Optional[int] = None) -> Tuple[int, str]:
@@ -189,8 +161,6 @@ def run_remote(cmd: str, host: str, port: int = 22, user: str = CURRENT_USER,
         host: 远程主机 IP 或主机名。
         port: ssh 端口，默认 22。
         user: ssh 登录用户，默认本地当前用户。
-        password: 密码认证时传入（依赖本地 sshpass）。
-        key_data: 私钥内容（字符串），用于公钥认证。
         sudo: 是否以 sudo 方式执行。
         control_master: 是否复用 ssh 连接（ControlMaster）。
         env: 要在远程 session 设置的环境变量。
@@ -211,7 +181,7 @@ def run_remote(cmd: str, host: str, port: int = 22, user: str = CURRENT_USER,
     args = (host, cmd)
     if logger:
         logger.info('execute command on %s:\n%s' % (host, cmd))
-    return _run('ssh', args, port, user, password, key_data, control_master, logger, timeout=timeout)
+    return _run('ssh', args, port, user, control_master, logger, timeout=timeout)
 
 
 def run_local(cmd: str, env: Optional[dict] = None, logger=None,
