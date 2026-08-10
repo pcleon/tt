@@ -357,7 +357,7 @@ class DatabaseMigrator:
 
         try:
             with open(output_path, "w", encoding="utf8") as f:
-                res = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True, check=True)
+                res = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, universal_newlines=True, check=True)
             return True
         except subprocess.CalledProcessError as err:
             logger.error("导出表结构失败 [%s]: %s", db_name, err.stderr)
@@ -385,7 +385,7 @@ class DatabaseMigrator:
 
         try:
             with open(output_path, "w", encoding="utf8") as f:
-                res = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True, check=True)
+                res = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, universal_newlines=True, check=True)
             return True
         except subprocess.CalledProcessError as err:
             logger.error("导出数据失败 [%s]: %s", db_name, err.stderr)
@@ -417,7 +417,7 @@ class DatabaseMigrator:
 
         try:
             with open(sql_file_path, "r", encoding="utf8") as f:
-                subprocess.run(cmd, stdin=f, stderr=subprocess.PIPE, text=True, check=True)
+                subprocess.run(cmd, stdin=f, stderr=subprocess.PIPE, universal_newlines=True, check=True)
             return True
         except subprocess.CalledProcessError as err:
             logger.error("导入 SQL 文件失败 [%s]: %s", sql_file_path, err.stderr)
