@@ -14,7 +14,6 @@ import tempfile
 import textwrap
 import time
 from typing import Union
-from airflow.providers.mysql.hooks.mysql import MySqlHook
 import pymysql
 import paramiko
 from paramiko.channel import Channel

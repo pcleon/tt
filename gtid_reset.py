@@ -78,14 +78,14 @@ def get_slave_topology(conn, host):
 
 
 def reset_instance(conn, host):
-    print(f"[{host}] 开始重置: STOP SLAVE, RESET SLAVE ALL, RESET MASTER")
+    print(f"[{host}] 开始重置: STOP SLAVE, RESET SLAVE, RESET MASTER")
     run_sql(conn, "STOP SLAVE;")
-    run_sql(conn, "RESET SLAVE ALL;")
+    run_sql(conn, "RESET SLAVE;")
     run_sql(conn, "RESET MASTER;")
-    try:
-        run_sql(conn, "SET GLOBAL gtid_purged='';")
-    except Exception as e:
-        print(f"[{host}] 设置 gtid_purged='' 失败（可能已有 GTID）: {e}")
+    # try:
+    #     run_sql(conn, "SET GLOBAL gtid_purged='';")
+    # except Exception as e:
+    #     print(f"[{host}] 设置 gtid_purged='' 失败（可能已有 GTID）: {e}")
     print(f"[{host}] 重置完成")
 
 
@@ -165,7 +165,7 @@ def main():
         for host, conn in conns.items():
             original_ro[host] = get_read_only_status(conn)
             if not original_ro[host]["read_only"]:
-                print(f"[{host}] 设置 read_only=ON")
+                print(f"[{host}] 设置read_only=ON,如果此处过久无响应,立即取消操作并检查实例状态")
                 set_read_only(conn, True)
             else:
                 print(f"[{host}] 已是read_only模式")
