@@ -321,7 +321,7 @@ class DatabaseMigrator:
             包含 mysqldump 命令行基础选项的字符串列表.
         """
         return [
-            "mysqldump",
+            "mysqldump",  #不能使用mysql8.0.32的mysqldumpjj
             f"--host={self.src['host']}",
             f"--port={self.src['port']}",
             f"--user={self.src['user']}",
@@ -357,7 +357,7 @@ class DatabaseMigrator:
 
         try:
             with open(output_path, "w", encoding="utf8") as f:
-                res = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, universal_newlines=True, check=True)
+                subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, universal_newlines=True, check=True)
             return True
         except subprocess.CalledProcessError as err:
             logger.error("导出表结构失败 [%s]: %s", db_name, err.stderr)
@@ -385,7 +385,7 @@ class DatabaseMigrator:
 
         try:
             with open(output_path, "w", encoding="utf8") as f:
-                res = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, universal_newlines=True, check=True)
+                subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, universal_newlines=True, check=True)
             return True
         except subprocess.CalledProcessError as err:
             logger.error("导出数据失败 [%s]: %s", db_name, err.stderr)
