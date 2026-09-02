@@ -7,10 +7,10 @@ cluster_name  M          S          TS         LS         OS         vip        
 db1           127.0.0.1  127.0.0.2  127.0.0.3  None       None       127.0.0.200    0
 
 输出示例（Sheet2 扁平格式）：
-cluster_name  IP         instance_role
-db1           127.0.0.1  M
-db1           127.0.0.2  S
-db1           127.0.0.3  TS
+idc  cluster_name  IP         instance_role
+p0   db1           127.0.0.1  M
+p0   db1           127.0.0.2  S
+p0   db1           127.0.0.3  TS
 """
 
 import argparse
@@ -20,6 +20,15 @@ from typing import Dict, List, Optional, Tuple
 
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
+
+# IP 与机房（IDC）映射表（通过 IP 地址第 2 段进行匹配）
+IDC_MAP: Dict[str, str] = {
+    "192": "p1",
+    "196": "p2",
+    "200": "p3",
+    "999": "p4",
+    "0": "p0",
+}
 
 # 定义标准角色列名映射
 ROLE_MAP: Dict[str, str] = {
@@ -40,6 +49,25 @@ LEGACY_ROLE_MAP: Dict[str, str] = {
 }
 
 
+def get_idc_by_ip(ip: str) -> str:
+    """根据 IP 地址的第 2 段获取对应的 IDC 机房标识.
+
+    例如 '10.192.1.1' -> 第 2 段为 '192' -> 返回 'p1'；'127.0.0.1' -> 返回 'p0'.
+    若无法提取或未在映射表中找到，则返回空字符串 ''.
+
+    Args:
+        ip: 点分十进制 IP 地址字符串.
+
+    Returns:
+        机房标识字符串（如 'p1', 'p2' 等），未匹配则返回空字符串 ''.
+    """
+    parts = ip.strip().split(".")
+    if len(parts) >= 2:
+        second_octet = parts[1].strip()
+        return IDC_MAP.get(second_octet, "")
+    return ""
+
+
 def load_sheet(wb: openpyxl.Workbook, sheet_name: str) -> Worksheet:
     """按名称查找工作表（不区分大小写），未找到则返回活动工作表.
 
@@ -56,14 +84,14 @@ def load_sheet(wb: openpyxl.Workbook, sheet_name: str) -> Worksheet:
     return wb.active
 
 
-def extract_roles(ws: Worksheet) -> List[Tuple[str, str, str]]:
-    """从源工作表中提取 (cluster_name, IP, instance_role) 记录列表.
+def extract_roles(ws: Worksheet) -> List[Tuple[str, str, str, str]]:
+    """从源工作表中提取 (idc, cluster_name, IP, instance_role) 记录列表.
 
     Args:
         ws: openpyxl 的源工作表对象.
 
     Returns:
-        三元组列表，每个元素为 (cluster_name, ip, instance_role).
+        四元组列表，每个元素为 (idc, cluster_name, ip, instance_role).
     """
     if ws.max_row < 1 or ws.max_column < 1:
         return []
@@ -96,7 +124,7 @@ def extract_roles(ws: Worksheet) -> List[Tuple[str, str, str]]:
             if raw_key in header_map:
                 role_cols.append((header_map[raw_key], target_role))
 
-    records: List[Tuple[str, str, str]] = []
+    records: List[Tuple[str, str, str, str]] = []
     for row_idx in range(2, ws.max_row + 1):
         cluster_val = ws.cell(row=row_idx, column=cluster_col).value
         if cluster_val is None or not str(cluster_val).strip():
@@ -110,18 +138,19 @@ def extract_roles(ws: Worksheet) -> List[Tuple[str, str, str]]:
             ip_str = str(ip_val).strip()
             if not ip_str or ip_str in ("-", "none", "null"):
                 continue
-            records.append((cluster_name, ip_str, role_name))
+            idc = get_idc_by_ip(ip_str)
+            records.append((idc, cluster_name, ip_str, role_name))
 
     return records
 
 
-def print_table(records: List[Tuple[str, str, str]]) -> None:
+def print_table(records: List[Tuple[str, str, str, str]]) -> None:
     """在终端格式化打印记录表格.
 
     Args:
-        records: (cluster_name, ip, instance_role) 记录列表.
+        records: (idc, cluster_name, ip, instance_role) 记录列表.
     """
-    headers = ("cluster_name", "IP", "instance_role")
+    headers = ("idc", "cluster_name", "IP", "instance_role")
     col_widths = [len(h) for h in headers]
 
     for row in records:
@@ -137,8 +166,32 @@ def print_table(records: List[Tuple[str, str, str]]) -> None:
         print("  ".join(val.ljust(col_widths[i]) for i, val in enumerate(row)))
 
 
+def generate_sql(records: List[Tuple[str, str, str, str]]) -> str:
+    """根据记录列表生成各实例的独立 INSERT SQL 语句.
+
+    每条记录生成一条单独的 insert 语句，格式示例如下：
+    insert into table_name (idc,cluster_name,instance_name,ip,port,instance_role) values
+    ('p0','db1','127.0.0.2_3306','127.0.0.2',3306,'S');
+
+    Args:
+        records: (idc, cluster_name, ip, instance_role) 记录列表.
+
+    Returns:
+        包含所有 INSERT 语句的字符串（换行分隔）.
+    """
+    sql_statements: List[str] = []
+    for idc, cluster_name, ip, instance_role in records:
+        instance_name = f"{ip}_3306"
+        stmt = (
+            "insert into table_name (idc,cluster_name,instance_name,ip,port,instance_role) values\n"
+            f"('{idc}','{cluster_name}','{instance_name}','{ip}',3306,'{instance_role}');"
+        )
+        sql_statements.append(stmt)
+    return "\n".join(sql_statements)
+
+
 def export_to_excel(
-    records: List[Tuple[str, str, str]],
+    records: List[Tuple[str, str, str, str]],
     output_path: Path,
     sheet_name: str = "Sheet2",
     template_path: Optional[Path] = None,
@@ -146,7 +199,7 @@ def export_to_excel(
     """将记录导出至 Excel 文件的指定工作表中.
 
     Args:
-        records: (cluster_name, ip, instance_role) 记录列表.
+        records: (idc, cluster_name, ip, instance_role) 记录列表.
         output_path: 输出 Excel 文件路径.
         sheet_name: 目标工作表名称，默认 'Sheet2'.
         template_path: 模板 Excel 文件路径，若指定且存在则基于该文件修改.
@@ -172,7 +225,7 @@ def export_to_excel(
             for cell in row:
                 cell.value = None
 
-    target_ws.append(["cluster_name", "IP", "instance_role"])
+    target_ws.append(["idc", "cluster_name", "IP", "instance_role"])
     for row in records:
         target_ws.append(list(row))
 
@@ -182,11 +235,12 @@ def export_to_excel(
 
 def main() -> None:
     """命令行入口函数，负责解析参数并执行转换与输出."""
-    parser = argparse.ArgumentParser(description="将 Sheet1 宽表数据转换为 Sheet2 扁平角色数据")
+    parser = argparse.ArgumentParser(description="将 Sheet1 宽表数据转换为 Sheet2 扁平角色数据或 SQL")
     parser.add_argument("-i", "--input", default="list.xlsx", help="输入的 Excel 文件路径，默认 list.xlsx")
     parser.add_argument("-s", "--sheet", default="Sheet1", help="源工作表名称，默认 Sheet1")
-    parser.add_argument("-o", "--output", help="导出的目标 Excel 文件路径；若未指定则仅在终端打印")
+    parser.add_argument("-o", "--output", help="导出的目标文件路径（支持 .xlsx 或 .sql）")
     parser.add_argument("--out-sheet", default="Sheet2", help="导出时的目标工作表名称，默认 Sheet2")
+    parser.add_argument("-q", "--sql", action="store_true", help="生成并输出 INSERT SQL 语句")
     args = parser.parse_args()
 
     src_path = Path(args.input)
@@ -198,7 +252,16 @@ def main() -> None:
     ws = load_sheet(wb, args.sheet)
     records = extract_roles(ws)
 
-    # 终端格式化打印
+    # 若指定了 -q 参数，则生成并输出 SQL
+    if args.sql:
+        sql_text = generate_sql(records)
+        print(sql_text)
+        if args.output:
+            Path(args.output).write_text(sql_text + "\n", encoding="utf-8")
+            print(f"\n已成功将 SQL 保存至: {args.output}")
+        return
+
+    # 默认：终端格式化打印
     print_table(records)
 
     # 若指定了输出目标则导出到 Excel
