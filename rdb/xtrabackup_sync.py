@@ -32,12 +32,12 @@ import yaml
 
 # 导入 myssh 模块中的 run_remote 函数
 try:
-    from myssh import run_remote
+    from ymm.myssh import run_remote
 except ImportError:
     # 支持在不同工作目录下查找根目录或当前目录中的 myssh
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from myssh import run_remote
+    from ymm.myssh import run_remote
 
 # 配置全局日志格式
 logging.basicConfig(
