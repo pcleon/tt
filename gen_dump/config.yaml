@@ -1,0 +1,46 @@
+# ==============================================================================
+# MySQL 8.0.32 数据库迁移工具配置文件 (gen_dump/config.yaml)
+# ==============================================================================
+
+# 源数据库与目标数据库共享的通用凭据（当迁移项未单独指定时使用）
+common:
+  port: 3306
+  user: "root"
+  password: "your_shared_password"
+
+# 迁移映射对列表（一对一对应：源主机 -> 目标主机）
+migrations:
+  - source: "192.168.1.10"
+    target: "192.168.2.10"
+    include_data: false   # 本组仅迁移表结构 + 用户（默认不迁移数据）
+
+  - source: "192.168.1.11"
+    target: "192.168.2.11"
+    include_data: true    # 本组迁移表结构 + 数据 + 用户
+
+  - source: "192.168.1.12"
+    target: "192.168.2.12"
+    # 若省略 include_data，则继承全局配置/命令行 --include-data 参数
+
+# 过滤规则配置
+filter:
+  # 忽略的数据库列表（黑名单，忽略不导出/不迁移）
+  # 注意：系统数据库 (information_schema, performance_schema, mysql, sys) 已被程序自动忽略
+  ignore_databases:
+    - "test"
+    - "tmp_db"
+
+  # 包含的数据库列表（白名单，为空或包含 "*" 时导出所有非忽略数据库）
+  include_databases: []
+
+  # 忽略的用户列表（黑名单，忽略不导出/不迁移，只比对用户名部分）
+  # 注意：系统内置账号 (root@localhost, mysql.sys, mysql.session, mysql.infoschema 等) 已被程序自动忽略
+  ignore_users:
+    - "test_user"
+    - "backup_user"
+
+  # 包含的用户列表（白名单，为空或包含 "*" 时导出所有非忽略用户）
+  include_users: []
+
+# SQL 文件导出的输出目录路径 (支持相对路径或绝对路径)
+output_dir: "./dumps"
